@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 import cv2
 import os
+import requests
+from streamlit_lottie import st_lottie
 from database import create_db, add_user, login_user, save_history, get_history
 
 # --- 1. INITIAL SETUP & DATABASE ---
@@ -20,14 +22,35 @@ def logout():
     st.session_state.logged_in = False
     st.rerun()
 
-# --- 3. PAGE CONFIG & THEME ---
-st.set_page_config(page_title="NeuroScan AI | Diagnostic Portal", layout="wide")
+def load_lottieurl(url):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
 
+# --- 3. PAGE CONFIG & THEME ---
+st.set_page_config(page_title="MEDIVISION PLUS | AI Diagnostic Platform", layout="wide")
+
+# Custom Medical-Tech CSS
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; color: #E2E8F0; }
     [data-testid="stSidebar"] { background-color: #1E293B; border-right: 1px solid #334155; }
-    .medical-card { background-color: #1E293B; padding: 25px; border-radius: 12px; border: 1px solid #334155; }
+    .medical-card { 
+        background-color: #1E293B; 
+        padding: 25px; 
+        border-radius: 15px; 
+        border: 1px solid #3B82F6; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    h1, h2, h3 { color: #3B82F6 !important; font-weight: 700; }
+    .stButton>button {
+        background-color: #3B82F6;
+        color: white;
+        border-radius: 8px;
+        width: 100%;
+        font-weight: bold;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -53,15 +76,20 @@ def preprocess_image(uploaded_file, target_size, model_type):
 if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("🩺 NeuroScan AI Portal")
-        tab1, tab2 = st.tabs(["Login", "Register"])
+        # Rebranded Title
+        st.title("🏥 MEDIVISION PLUS")
+        st.subheader("Advanced Multi-Organ Diagnostic AI")
+        
+        # Lottie Animation (Medical Pulse/Scan)
+        lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
+        st_lottie(lottie_med, height=200, key="med_anim")
+        
+        tab1, tab2 = st.tabs(["Secure Login", "Patient Registration"])
         
         with tab1:
-            # Added unique key="login_phone"
             l_phone = st.text_input("Phone Number", key="login_phone")
-            # Added unique key="login_pass"
             l_pass = st.text_input("Password", type="password", key="login_pass")
-            if st.button("Login"):
+            if st.button("Login to Portal"):
                 user = login_user(l_phone, l_pass)
                 if user:
                     st.session_state.logged_in = True
@@ -69,39 +97,39 @@ if not st.session_state.logged_in:
                     st.session_state.user_name = user[2]
                     st.rerun()
                 else:
-                    st.error("Invalid credentials.")
+                    st.error("Access Denied: Invalid credentials.")
 
         with tab2:
             r_name = st.text_input("Patient Full Name")
-            # Added unique key="reg_phone"
             r_phone = st.text_input("Phone Number", key="reg_phone")
             r_age = st.number_input("Age", 1, 120)
-            # Added unique key="reg_pass"
             r_pass = st.text_input("Create Password", type="password", key="reg_pass")
-            if st.button("Create Account"):
+            if st.button("Initialize Account"):
                 if add_user(r_phone, r_pass, r_name, r_age):
-                    st.success("Registration successful! Go to Login tab.")
+                    st.success("Registration successful! Proceed to Login.")
                 else:
-                    st.error("User already exists.")
+                    st.error("Identity Error: User already exists.")
     st.stop()
 
 # --- 6. MAIN APP (LOGGED IN ONLY) ---
-st.sidebar.title(f"Patient: {st.session_state.user_name}")
-menu = st.sidebar.radio("Navigation", ["Diagnostic Hub", "My History", "Logout"])
+st.sidebar.markdown(f"### 👤 Logged in: \n**{st.session_state.user_name}**")
+st.sidebar.markdown("---")
+menu = st.sidebar.radio("Dashboard Navigation", ["Diagnostic Hub", "My History", "Logout"])
 
 if menu == "Logout":
     logout()
 
 elif menu == "My History":
-    st.title("📋 Your Diagnostic History")
+    st.title("📋 Patient Diagnostic Records")
     history_df = get_history(st.session_state.user_phone)
     if not history_df.empty:
-        st.dataframe(history_df, width="stretch")
+        st.dataframe(history_df, use_container_width=True)
     else:
-        st.info("No records found. Visit the Diagnostic Hub to start.")
+        st.info("No clinical history found. Initiate a scan in the Hub.")
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
+    st.write("Upload medical imaging for instant AI-powered analysis.")
     
     config = {
         "Brain Tumor (MRI)": {
@@ -121,35 +149,41 @@ elif menu == "Diagnostic Hub":
         }
     }
 
-    module = st.selectbox("Select Organ for Scan Analysis", list(config.keys()))
+    module = st.selectbox("Target Anatomical Area", list(config.keys()))
     current = config[module]
     
-    uploader = st.file_uploader(f"Upload {module} scan", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader(f"Submit {module} for AI screening", type=["jpg", "png", "jpeg"])
 
     if uploader:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
-            st.image(raw_img, caption="Uploaded Scan", width='stretch')
+            st.image(raw_img, caption="Clinical Imaging Input", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
-            if st.button("🚀 INITIATE ANALYSIS"):
-                if os.path.exists(current["path"]):
-                    model = load_selected_model(current["path"])
-                    pred = model.predict(proc_img)
-                    idx = np.argmax(pred)
-                    label = current["labels"][idx]
-                    conf = float(np.max(pred) * 100)
+            if st.button("🚀 INITIATE AI INFERENCE"):
+                with st.spinner("Analyzing neural pathways..."):
+                    if os.path.exists(current["path"]):
+                        model = load_selected_model(current["path"])
+                        pred = model.predict(proc_img)
+                        idx = np.argmax(pred)
+                        label = current["labels"][idx]
+                        conf = float(np.max(pred) * 100)
 
-                    color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
-                    st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
-                    st.metric("AI Confidence Level", f"{conf:.2f}%")
+                        color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
+                        st.markdown(f"### Diagnosis Outcome:")
+                        st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
+                        st.metric("Clinical Confidence Level", f"{conf:.2f}%")
 
-                    save_history(st.session_state.user_phone, module, label, conf)
-                    st.success("Diagnosis recorded in your history.")
-                else:
-                    st.error("Model file missing.")
+                        save_history(st.session_state.user_phone, module, label, conf)
+                        st.success("Clinical record updated successfully.")
+                    else:
+                        st.error("System Error: AI Model weights not found.")
             st.markdown('</div>', unsafe_allow_html=True)
+
+# Footer
+st.sidebar.markdown("---")
+st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
