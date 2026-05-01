@@ -23,10 +23,13 @@ def logout():
     st.rerun()
 
 def load_lottieurl(url):
-    r = requests.get(url)
-    if r.status_code != 200:
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except:
         return None
-    return r.json()
 
 # --- 3. PAGE CONFIG & THEME ---
 st.set_page_config(page_title="MEDIVISION PLUS | AI Diagnostic Platform", layout="wide")
@@ -41,7 +44,7 @@ st.markdown("""
         padding: 25px; 
         border-radius: 15px; 
         border: 1px solid #3B82F6; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
     h1, h2, h3 { color: #3B82F6 !important; font-weight: 700; }
     .stButton>button {
@@ -50,6 +53,11 @@ st.markdown("""
         border-radius: 8px;
         width: 100%;
         font-weight: bold;
+        transition: 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #2563EB;
+        border: 1px solid #E2E8F0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -76,13 +84,16 @@ def preprocess_image(uploaded_file, target_size, model_type):
 if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        # Rebranded Title
         st.title("🏥 MEDIVISION PLUS")
         st.subheader("Advanced Multi-Organ Diagnostic AI")
         
-        # Lottie Animation (Medical Pulse/Scan)
-        lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
-        st_lottie(lottie_med, height=200, key="med_anim")
+        # Safe Lottie Loader
+        lottie_url = "https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json"
+        lottie_med = load_lottieurl(lottie_url)
+        if lottie_med:
+            st_lottie(lottie_med, height=200, key="med_anim")
+        else:
+            st.markdown("### 🩺")
         
         tab1, tab2 = st.tabs(["Secure Login", "Patient Registration"])
         
@@ -111,10 +122,10 @@ if not st.session_state.logged_in:
                     st.error("Identity Error: User already exists.")
     st.stop()
 
-# --- 6. MAIN APP (LOGGED IN ONLY) ---
-st.sidebar.markdown(f"### 👤 Logged in: \n**{st.session_state.user_name}**")
+# --- 6. MAIN APP ---
+st.sidebar.markdown(f"### 👤 Patient Profile: \n**{st.session_state.user_name}**")
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("Dashboard Navigation", ["Diagnostic Hub", "My History", "Logout"])
+menu = st.sidebar.radio("Navigation", ["Diagnostic Hub", "My History", "Logout"])
 
 if menu == "Logout":
     logout()
@@ -129,7 +140,6 @@ elif menu == "My History":
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
-    st.write("Upload medical imaging for instant AI-powered analysis.")
     
     config = {
         "Brain Tumor (MRI)": {
@@ -149,23 +159,23 @@ elif menu == "Diagnostic Hub":
         }
     }
 
-    module = st.selectbox("Target Anatomical Area", list(config.keys()))
+    module = st.selectbox("Select Target Organ", list(config.keys()))
     current = config[module]
     
-    uploader = st.file_uploader(f"Submit {module} for AI screening", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader(f"Upload {module} for Analysis", type=["jpg", "png", "jpeg"])
 
     if uploader:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
-            st.image(raw_img, caption="Clinical Imaging Input", use_container_width=True)
+            st.image(raw_img, caption="Original Scan", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
-            if st.button("🚀 INITIATE AI INFERENCE"):
-                with st.spinner("Analyzing neural pathways..."):
+            if st.button("🚀 START AI ANALYSIS"):
+                with st.spinner("Processing Imaging Data..."):
                     if os.path.exists(current["path"]):
                         model = load_selected_model(current["path"])
                         pred = model.predict(proc_img)
@@ -179,9 +189,9 @@ elif menu == "Diagnostic Hub":
                         st.metric("Clinical Confidence Level", f"{conf:.2f}%")
 
                         save_history(st.session_state.user_phone, module, label, conf)
-                        st.success("Clinical record updated successfully.")
+                        st.success("Record saved to Clinical History.")
                     else:
-                        st.error("System Error: AI Model weights not found.")
+                        st.error("System Error: Model file weights not found.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
