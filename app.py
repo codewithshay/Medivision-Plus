@@ -4,6 +4,8 @@ import numpy as np
 import cv2
 import os
 import requests
+import pandas as pd
+import sqlite3
 from streamlit_lottie import st_lottie
 from database import create_db, add_user, login_user, save_history, get_history
 
@@ -19,22 +21,20 @@ if 'logged_in' not in st.session_state:
     st.session_state.user_name = ""
 
 def logout():
-    st.session_state.logged_in = False
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
 
 def load_lottieurl(url):
     try:
         r = requests.get(url, timeout=5)
-        if r.status_code != 200:
-            return None
+        if r.status_code != 200: return None
         return r.json()
-    except:
-        return None
+    except: return None
 
 # --- 3. PAGE CONFIG & THEME ---
 st.set_page_config(page_title="MEDIVISION PLUS | AI Diagnostic Platform", layout="wide")
 
-# Custom Medical-Tech CSS
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; color: #E2E8F0; }
@@ -53,11 +53,6 @@ st.markdown("""
         border-radius: 8px;
         width: 100%;
         font-weight: bold;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #2563EB;
-        border: 1px solid #E2E8F0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -72,12 +67,10 @@ def preprocess_image(uploaded_file, target_size, model_type):
     img = cv2.imdecode(file_bytes, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_resized = cv2.resize(img, (target_size, target_size))
-    
     if model_type == "Brain":
         img_array = img_resized.astype('float32') / 255.0
     else:
         img_array = tf.keras.applications.mobilenet_v2.preprocess_input(np.array(img_resized))
-        
     return img, np.expand_dims(img_array, axis=0)
 
 # --- 5. LOGIN / SIGNUP SCREEN ---
@@ -87,13 +80,9 @@ if not st.session_state.logged_in:
         st.title("🏥 MEDIVISION PLUS")
         st.subheader("Advanced Multi-Organ Diagnostic AI")
         
-        # Safe Lottie Loader
-        lottie_url = "https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json"
-        lottie_med = load_lottieurl(lottie_url)
-        if lottie_med:
-            st_lottie(lottie_med, height=200, key="med_anim")
-        else:
-            st.markdown("### 🩺")
+        lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
+        if lottie_med: st_lottie(lottie_med, height=200, key="med_anim")
+        else: st.markdown("### 🩺")
         
         tab1, tab2 = st.tabs(["Secure Login", "Patient Registration"])
         
@@ -104,7 +93,7 @@ if not st.session_state.logged_in:
                 user = login_user(l_phone, l_pass)
                 if user:
                     st.session_state.logged_in = True
-                    st.session_state.user_phone = user[0]
+                    st.session_state.user_phone = str(user[0]) # Store as string for comparison
                     st.session_state.user_name = user[2]
                     st.rerun()
                 else:
@@ -136,32 +125,17 @@ elif menu == "My History":
     if not history_df.empty:
         st.dataframe(history_df, use_container_width=True)
     else:
-        st.info("No clinical history found. Initiate a scan in the Hub.")
+        st.info("No clinical history found.")
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
-    
     config = {
-        "Brain Tumor (MRI)": {
-            "size": 64, "type": "Brain",
-            "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), 
-            "labels": ["Tumor Detected", "Normal"]
-        },
-        "Skin Cancer (Dermoscopy)": {
-            "size": 128, "type": "Skin",
-            "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), 
-            "labels": ["Benign", "Malignant"]
-        },
-        "Lung Tumor (CT Scan)": {
-            "size": 224, "type": "Lung",
-            "path": os.path.join(MODELS_DIR, "lung_model.keras"), 
-            "labels": ["Normal", "Tumor Detected"]
-        }
+        "Brain Tumor (MRI)": {"size": 64, "type": "Brain", "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), "labels": ["Tumor Detected", "Normal"]},
+        "Skin Cancer (Dermoscopy)": {"size": 128, "type": "Skin", "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), "labels": ["Benign", "Malignant"]},
+        "Lung Tumor (CT Scan)": {"size": 224, "type": "Lung", "path": os.path.join(MODELS_DIR, "lung_model.keras"), "labels": ["Normal", "Tumor Detected"]}
     }
-
     module = st.selectbox("Select Target Organ", list(config.keys()))
     current = config[module]
-    
     uploader = st.file_uploader(f"Upload {module} for Analysis", type=["jpg", "png", "jpeg"])
 
     if uploader:
@@ -171,29 +145,46 @@ elif menu == "Diagnostic Hub":
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
             st.image(raw_img, caption="Original Scan", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
-
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             if st.button("🚀 START AI ANALYSIS"):
                 with st.spinner("Processing Imaging Data..."):
                     if os.path.exists(current["path"]):
                         model = load_selected_model(current["path"])
-                        pred = model.predict(proc_img)
-                        idx = np.argmax(pred)
-                        label = current["labels"][idx]
-                        conf = float(np.max(pred) * 100)
-
+                        pred = model.predict(proc_img); idx = np.argmax(pred)
+                        label = current["labels"][idx]; conf = float(np.max(pred) * 100)
                         color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
                         st.markdown(f"### Diagnosis Outcome:")
                         st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
                         st.metric("Clinical Confidence Level", f"{conf:.2f}%")
-
                         save_history(st.session_state.user_phone, module, label, conf)
-                        st.success("Record saved to Clinical History.")
-                    else:
-                        st.error("System Error: Model file weights not found.")
+                    else: st.error("Model file not found.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-# Footer
+# --- 7. SECURE ADMIN ANALYTICS ---
+ADMIN_PHONE = "11092003"
+
+if st.session_state.user_phone == ADMIN_PHONE:
+    st.sidebar.markdown("---")
+    if st.sidebar.checkbox("🔓 Developer Analytics"):
+        st.divider()
+        st.header("📊 Admin Dashboard")
+        try:
+            conn = sqlite3.connect("patients.db")
+            df_users = pd.read_sql_query("SELECT name, phone, age FROM users", conn)
+            df_logs = pd.read_sql_query("SELECT * FROM history ORDER BY id DESC", conn)
+            conn.close()
+            
+            k1, k2 = st.columns(2)
+            k1.metric("Total Patients", len(df_users))
+            k2.metric("Total Scans", len(df_logs))
+            
+            st.subheader("Registered Users")
+            st.dataframe(df_users, use_container_width=True)
+            st.subheader("System Scan Logs")
+            st.dataframe(df_logs, use_container_width=True)
+        except Exception as e:
+            st.error(f"Database Error: {e}")
+
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
