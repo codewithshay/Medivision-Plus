@@ -81,42 +81,50 @@ def preprocess_image(uploaded_file, target_size, model_type):
         img_array = tf.keras.applications.mobilenet_v2.preprocess_input(np.array(img_resized))
     return img, np.expand_dims(img_array, axis=0)
 
-# --- 5. LOGIN / SIGNUP SCREEN (Universal UI Overhaul) ---
+# --- 5. LOGIN / SIGNUP SCREEN (Visual-First UI) ---
 if not st.session_state.logged_in:
-    col_info, col_auth = st.columns([1.2, 1], gap="large")
+    col_visual, col_auth = st.columns([1.3, 1], gap="large")
 
-    with col_info:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.title("🏥 MEDIVISION PLUS")
-        st.subheader("Universal AI Diagnostic Gateway")
-        st.write("""
-            **Cross-Platform Clinical Intelligence**  
-            Accessible from any device. This portal integrates advanced CNN models 
-            to assist in the rapid detection of medical anomalies across multiple organs.
-        """)
+    with col_visual:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: left; color: #3B82F6; font-size: 3rem;'>🏥 MEDIVISION PLUS</h1>", unsafe_allow_html=True)
         
+        # Color-coded Diagnostic Visual Grid
         st.markdown("""
-            ✅ **Brain Tumor Analysis** (MRI)  
-            ✅ **Skin Lesion Screening** (Dermoscopy)  
-            ✅ **Lung Nodule Detection** (CT Scan)  
-            ---
-            *Powered by TensorFlow & Streamlit Cloud*
-        """)
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 25px;">
+                <div style="background-color: #1E293B; padding: 25px; border-radius: 12px; border-top: 5px solid #60A5FA; text-align: center;">
+                    <h1 style="margin:0; font-size: 2.5rem;">🧠</h1>
+                    <b style="color: #60A5FA; font-size: 1rem; letter-spacing: 1px;">BRAIN MRI</b>
+                </div>
+                <div style="background-color: #1E293B; padding: 25px; border-radius: 12px; border-top: 5px solid #34D399; text-align: center;">
+                    <h1 style="margin:0; font-size: 2.5rem;">🫁</h1>
+                    <b style="color: #34D399; font-size: 1rem; letter-spacing: 1px;">LUNG CT</b>
+                </div>
+                <div style="background-color: #1E293B; padding: 25px; border-radius: 12px; border-top: 5px solid #F87171; text-align: center;">
+                    <h1 style="margin:0; font-size: 2.5rem;">🔬</h1>
+                    <b style="color: #F87171; font-size: 1rem; letter-spacing: 1px;">SKIN CANCER</b>
+                </div>
+                <div style="background-color: #1E293B; padding: 25px; border-radius: 12px; border-top: 5px solid #A78BFA; text-align: center;">
+                    <h1 style="margin:0; font-size: 2.5rem;">📱</h1>
+                    <b style="color: #A78BFA; font-size: 1rem; letter-spacing: 1px;">OMNI-DEVICE</b>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
         if lottie_med:
-            st_lottie(lottie_med, height=300, key="login_anim")
+            st_lottie(lottie_med, height=320, key="login_anim")
 
     with col_auth:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("### **Portal Access**")
-            tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
+            st.markdown("<h3 style='text-align: center;'>CLINICAL GATEWAY</h3>", unsafe_allow_html=True)
+            tab1, tab2 = st.tabs(["🔒 LOGIN", "➕ REGISTER"])
             
             with tab1:
-                l_phone = st.text_input("Registered Phone", placeholder="e.g. 8638968521", key="login_phone")
-                l_pass = st.text_input("Access Password", type="password", placeholder="••••••••", key="login_pass")
-                if st.button("Authenticate & Enter", use_container_width=True):
+                l_phone = st.text_input("User Identification", placeholder="Registered Phone Number", key="login_phone")
+                l_pass = st.text_input("Security Key", type="password", placeholder="Access Password", key="login_pass")
+                if st.button("AUTHORIZE ACCESS", use_container_width=True):
                     user = login_user(l_phone, l_pass)
                     if user:
                         st.session_state.logged_in = True
@@ -124,29 +132,27 @@ if not st.session_state.logged_in:
                         st.session_state.user_name = user[2]
                         st.rerun()
                     else:
-                        st.error("Invalid credentials. Please try again.")
+                        st.error("Authentication Denied")
 
             with tab2:
-                r_name = st.text_input("Full Patient Name", placeholder="Letters only")
-                r_phone = st.text_input("Mobile Number", placeholder="10 digits")
-                r_age = st.number_input("Patient Age", 1, 120, 21)
-                r_pass = st.text_input("Security Password", type="password")
-                
-                if st.button("Initialize Secure Account", use_container_width=True):
+                r_name = st.text_input("Full Patient Name", placeholder="Alphabets only")
+                r_phone = st.text_input("Primary Phone", placeholder="10-digit number")
+                r_age = st.number_input("Age", 1, 120, 21)
+                r_pass = st.text_input("New Password", type="password")
+                if st.button("INITIALIZE PROFILE", use_container_width=True):
                     is_name_valid = bool(re.match(r"^[A-Za-z\s]+$", r_name))
                     is_phone_valid = bool(re.match(r"^\d{10}$", r_phone))
                     
                     if not is_name_valid:
-                        st.error("Invalid Name: Please use alphabets only.")
+                        st.error("Name requires alphabets only.")
                     elif not is_phone_valid:
-                        st.error("Invalid Phone: Must be exactly 10 digits.")
+                        st.error("Phone must be exactly 10 digits.")
                     elif len(r_pass) < 4:
-                        st.error("Password too short.")
+                        st.error("Password too brief.")
                     else:
                         if add_user(r_phone, r_pass, r_name, r_age):
-                            st.success("Account created! Please log in.")
-                        else:
-                            st.error("Identity Error: Phone number already exists.")
+                            st.success("Account Ready! Login now.")
+                        else: st.error("Profile already exists.")
     st.stop()
 
 # --- 6. MAIN APP INTERFACE ---
@@ -163,7 +169,7 @@ elif menu == "My History":
     if not history_df.empty:
         st.dataframe(history_df, use_container_width=True)
     else:
-        st.info("No clinical history found.")
+        st.info("No records found in clinical history.")
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
@@ -172,24 +178,24 @@ elif menu == "Diagnostic Hub":
         "Skin Cancer (Dermoscopy)": {"size": 128, "type": "Skin", "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), "labels": ["Benign", "Malignant"]},
         "Lung Tumor (CT Scan)": {"size": 224, "type": "Lung", "path": os.path.join(MODELS_DIR, "lung_model.keras"), "labels": ["Normal", "Tumor Detected"]}
     }
-    module = st.selectbox("Select Target Organ", list(config.keys()))
+    module = st.selectbox("Select Diagnostic Suite", list(config.keys()))
     current = config[module]
-    uploader = st.file_uploader(f"Upload {module} scan", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader(f"Upload {module} imaging", type=["jpg", "png", "jpeg"])
 
     if uploader:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
-            st.image(raw_img, caption="Original Input", use_container_width=True)
+            st.image(raw_img, caption="Diagnostic Input", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
-            if st.button("🚀 START AI ANALYSIS"):
+            if st.button("🚀 EXECUTE AI ANALYSIS"):
                 if not is_medical_scan(raw_img):
-                    st.error("❌ Non-Medical Image Detected. Please upload a grayscale medical scan.")
+                    st.error("❌ Invalid Image Source: Please provide a grayscale medical scan.")
                 else:
-                    with st.spinner("Analyzing Data..."):
+                    with st.spinner("Processing Clinical Data..."):
                         if os.path.exists(current["path"]):
                             model = load_selected_model(current["path"])
                             pred = model.predict(proc_img)
@@ -198,14 +204,14 @@ elif menu == "Diagnostic Hub":
                             conf = float(np.max(pred) * 100)
 
                             if conf < 75.0:
-                                st.warning("⚠️ Low AI Confidence: The image patterns are unclear.")
+                                st.warning("⚠️ Uncertainty Alert: Imaging data does not meet precision threshold.")
                             else:
                                 color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
-                                st.markdown(f"### Diagnosis Outcome:")
+                                st.markdown(f"### Assessment Outcome:")
                                 st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
-                                st.metric("Clinical Confidence Level", f"{conf:.2f}%")
+                                st.metric("Confidence Rating", f"{conf:.2f}%")
                                 save_history(st.session_state.user_phone, module, label, conf)
-                        else: st.error("Model file not found.")
+                        else: st.error("Inference Engine missing.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 7. SECURE ADMIN ANALYTICS ---
@@ -221,11 +227,12 @@ if st.session_state.user_phone == ADMIN_PHONE:
             df_users = pd.read_sql_query("SELECT name, phone, age FROM users", conn)
             df_logs = pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn)
             conn.close()
-            st.metric("Total Patients", len(df_users))
+            st.metric("Total Userbase", len(df_users))
+            st.subheader("Global Directory")
             st.dataframe(df_users, use_container_width=True)
-            st.subheader("Global System Logs")
+            st.subheader("Global Clinical Activity")
             st.dataframe(df_logs, use_container_width=True)
-        except Exception as e: st.error(f"Database Error: {e}")
+        except Exception as e: st.error(f"Engine Error: {e}")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
