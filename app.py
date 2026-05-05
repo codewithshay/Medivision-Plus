@@ -194,7 +194,7 @@ elif menu == "Diagnostic Hub":
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 7. SECURE ADMIN ANALYTICS ---
-ADMIN_PHONE = "11092003"
+ADMIN_PHONE = "8638968521"
 if st.session_state.user_phone == ADMIN_PHONE:
     st.sidebar.markdown("---")
     if st.sidebar.checkbox("🔓 Developer Analytics"):
