@@ -6,6 +6,7 @@ import os
 import requests
 import pandas as pd
 import sqlite3
+import re 
 from streamlit_lottie import st_lottie
 from database import create_db, add_user, login_user, save_history, get_history
 
@@ -35,7 +36,6 @@ def load_lottieurl(url):
 # --- 3. PAGE CONFIG & THEME ---
 st.set_page_config(page_title="MEDIVISION PLUS | AI Diagnostic Platform", layout="wide")
 
-# Professional Medical-Tech Theme
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; color: #E2E8F0; }
@@ -55,11 +55,6 @@ st.markdown("""
         border-radius: 8px;
         width: 100%;
         font-weight: bold;
-        border: none;
-    }
-    .stButton>button:hover {
-        background-color: #2563EB;
-        border: 1px solid white;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -74,13 +69,10 @@ def preprocess_image(uploaded_file, target_size, model_type):
     img = cv2.imdecode(file_bytes, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_resized = cv2.resize(img, (target_size, target_size))
-    
     if model_type == "Brain":
         img_array = img_resized.astype('float32') / 255.0
     else:
-        # Preprocessing for MobileNetV2 based models (Lung/Skin)
         img_array = tf.keras.applications.mobilenet_v2.preprocess_input(np.array(img_resized))
-        
     return img, np.expand_dims(img_array, axis=0)
 
 # --- 5. LOGIN / SIGNUP SCREEN ---
@@ -90,13 +82,9 @@ if not st.session_state.logged_in:
         st.title("🏥 MEDIVISION PLUS")
         st.subheader("Advanced Multi-Organ Diagnostic AI")
         
-        # Medical Animation
-        lottie_url = "https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json"
-        lottie_med = load_lottieurl(lottie_url)
-        if lottie_med:
-            st_lottie(lottie_med, height=200, key="med_anim")
-        else:
-            st.markdown("### 🩺")
+        lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
+        if lottie_med: st_lottie(lottie_med, height=200, key="med_anim")
+        else: st.markdown("### 🩺")
         
         tab1, tab2 = st.tabs(["Secure Login", "Patient Registration"])
         
@@ -115,14 +103,31 @@ if not st.session_state.logged_in:
 
         with tab2:
             r_name = st.text_input("Patient Full Name")
-            r_phone = st.text_input("Phone Number", key="reg_phone")
+            r_phone = st.text_input("Phone Number (10 digits)", key="reg_phone")
             r_age = st.number_input("Age", 1, 120)
             r_pass = st.text_input("Create Password", type="password", key="reg_pass")
+            
             if st.button("Initialize Account"):
-                if add_user(r_phone, r_pass, r_name, r_age):
-                    st.success("Registration successful! Proceed to Login.")
+                # --- STRICT VALIDATION ---
+                # Check 1: Name must contain ONLY letters and spaces
+                is_name_valid = bool(re.match(r"^[A-Za-z\s]+$", r_name))
+                # Check 2: Phone must contain ONLY digits and be exactly 10 long
+                is_phone_valid = bool(re.match(r"^\d{10}$", r_phone))
+                
+                if not r_name or not r_phone or not r_pass:
+                    st.warning("Please fill in all clinical fields.")
+                elif not is_name_valid:
+                    st.error("Invalid Name: Numerical values and special characters are not allowed.")
+                elif not is_phone_valid:
+                    st.error("Invalid Phone: Must be a 10-digit Indian mobile number (e.g., 9876543210).")
+                elif len(r_pass) < 4:
+                    st.error("Security Alert: Password must be at least 4 characters.")
                 else:
-                    st.error("Identity Error: User already exists.")
+                    # Only runs if ALL checks above pass
+                    if add_user(r_phone, r_pass, r_name, r_age):
+                        st.success(f"Registration Successful for {r_name}! You can now switch to the Login tab.")
+                    else:
+                        st.error("System Error: This phone number is already registered.")
     st.stop()
 
 # --- 6. MAIN APP INTERFACE ---
@@ -139,68 +144,44 @@ elif menu == "My History":
     if not history_df.empty:
         st.dataframe(history_df, use_container_width=True)
     else:
-        st.info("No clinical history found. Use the Hub to perform a scan.")
+        st.info("No clinical history found.")
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
-    
     config = {
-        "Brain Tumor (MRI)": {
-            "size": 64, "type": "Brain",
-            "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), 
-            "labels": ["Tumor Detected", "Normal"]
-        },
-        "Skin Cancer (Dermoscopy)": {
-            "size": 128, "type": "Skin",
-            "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), 
-            "labels": ["Benign", "Malignant"]
-        },
-        "Lung Tumor (CT Scan)": {
-            "size": 224, "type": "Lung",
-            "path": os.path.join(MODELS_DIR, "lung_model.keras"), 
-            "labels": ["Normal", "Tumor Detected"]
-        }
+        "Brain Tumor (MRI)": {"size": 64, "type": "Brain", "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), "labels": ["Tumor Detected", "Normal"]},
+        "Skin Cancer (Dermoscopy)": {"size": 128, "type": "Skin", "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), "labels": ["Benign", "Malignant"]},
+        "Lung Tumor (CT Scan)": {"size": 224, "type": "Lung", "path": os.path.join(MODELS_DIR, "lung_model.keras"), "labels": ["Normal", "Tumor Detected"]}
     }
-
-    module = st.selectbox("Select Target Organ for Analysis", list(config.keys()))
+    module = st.selectbox("Select Target Organ", list(config.keys()))
     current = config[module]
-    
-    uploader = st.file_uploader(f"Upload {module} for Clinical Screening", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader(f"Upload {module} scan", type=["jpg", "png", "jpeg"])
 
     if uploader:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
-            st.image(raw_img, caption="Imaging Input", use_container_width=True)
+            st.image(raw_img, caption="Original Scan", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
-
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             if st.button("🚀 START AI ANALYSIS"):
-                with st.spinner("Executing Deep Learning Inference..."):
+                with st.spinner("Processing Imaging Data..."):
                     if os.path.exists(current["path"]):
                         model = load_selected_model(current["path"])
-                        pred = model.predict(proc_img)
-                        idx = np.argmax(pred)
-                        label = current["labels"][idx]
-                        conf = float(np.max(pred) * 100)
-
-                        # Color coding results
+                        pred = model.predict(proc_img); idx = np.argmax(pred)
+                        label = current["labels"][idx]; conf = float(np.max(pred) * 100)
                         color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
                         st.markdown(f"### Diagnosis Outcome:")
                         st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
                         st.metric("Clinical Confidence Level", f"{conf:.2f}%")
-
                         save_history(st.session_state.user_phone, module, label, conf)
-                        st.success("Result appended to clinical history.")
-                    else:
-                        st.error("Critical: AI Model weights not found in system.")
+                    else: st.error("Model not found.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 7. SECURE ADMIN ANALYTICS ---
 ADMIN_PHONE = "11092003"
-
 if st.session_state.user_phone == ADMIN_PHONE:
     st.sidebar.markdown("---")
     if st.sidebar.checkbox("🔓 Developer Analytics"):
@@ -208,24 +189,16 @@ if st.session_state.user_phone == ADMIN_PHONE:
         st.header("📊 Admin Dashboard")
         try:
             conn = sqlite3.connect("patients.db")
-            # Pull users
             df_users = pd.read_sql_query("SELECT name, phone, age FROM users", conn)
-            # Pull history - FIXED: sorting by date as 'id' doesn't exist
             df_logs = pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn)
             conn.close()
-            
-            kpi1, kpi2 = st.columns(2)
-            kpi1.metric("Total Patients", len(df_users))
-            kpi2.metric("Total System Scans", len(df_logs))
-            
+            st.metric("Total Patients", len(df_users))
             st.subheader("Global User Directory")
             st.dataframe(df_users, use_container_width=True)
-            
             st.subheader("System-Wide Clinical Logs")
             st.dataframe(df_logs, use_container_width=True)
         except Exception as e:
-            st.error(f"Analytics Database Error: {e}")
+            st.error(f"Database Error: {e}")
 
-# Sidebar Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
