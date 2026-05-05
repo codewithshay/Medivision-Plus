@@ -59,10 +59,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. AI MODEL UTILITIES ---
+# --- 4. UTILITIES & IMAGE VALIDATION ---
 @st.cache_resource
 def load_selected_model(model_path):
     return tf.keras.models.load_model(model_path, compile=False)
+
+def is_medical_scan(img):
+    """Checks if the image is grayscale enough to be an MRI/CT scan."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    avg_saturation = np.mean(hsv[:, :, 1])
+    # Standard medical scans have very low saturation
+    return avg_saturation < 40 
 
 def preprocess_image(uploaded_file, target_size, model_type):
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -108,26 +115,22 @@ if not st.session_state.logged_in:
             r_pass = st.text_input("Create Password", type="password", key="reg_pass")
             
             if st.button("Initialize Account"):
-                # --- STRICT VALIDATION ---
-                # Check 1: Name must contain ONLY letters and spaces
                 is_name_valid = bool(re.match(r"^[A-Za-z\s]+$", r_name))
-                # Check 2: Phone must contain ONLY digits and be exactly 10 long
                 is_phone_valid = bool(re.match(r"^\d{10}$", r_phone))
                 
-                if not r_name or not r_phone or not r_pass:
+                if not r_name or not r_phone:
                     st.warning("Please fill in all clinical fields.")
                 elif not is_name_valid:
-                    st.error("Invalid Name: Numerical values and special characters are not allowed.")
+                    st.error("Invalid Name: Use alphabets only.")
                 elif not is_phone_valid:
-                    st.error("Invalid Phone: Must be a 10-digit Indian mobile number (e.g., 9876543210).")
+                    st.error("Invalid Phone: Must be 10 digits.")
                 elif len(r_pass) < 4:
                     st.error("Security Alert: Password must be at least 4 characters.")
                 else:
-                    # Only runs if ALL checks above pass
                     if add_user(r_phone, r_pass, r_name, r_age):
-                        st.success(f"Registration Successful for {r_name}! You can now switch to the Login tab.")
+                        st.success(f"Registered {r_name}! Switch to Login tab.")
                     else:
-                        st.error("System Error: This phone number is already registered.")
+                        st.error("Identity Error: Phone number already exists.")
     st.stop()
 
 # --- 6. MAIN APP INTERFACE ---
@@ -162,22 +165,32 @@ elif menu == "Diagnostic Hub":
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
-            st.image(raw_img, caption="Original Scan", use_container_width=True)
+            st.image(raw_img, caption="Original Input", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             if st.button("🚀 START AI ANALYSIS"):
-                with st.spinner("Processing Imaging Data..."):
-                    if os.path.exists(current["path"]):
-                        model = load_selected_model(current["path"])
-                        pred = model.predict(proc_img); idx = np.argmax(pred)
-                        label = current["labels"][idx]; conf = float(np.max(pred) * 100)
-                        color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
-                        st.markdown(f"### Diagnosis Outcome:")
-                        st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
-                        st.metric("Clinical Confidence Level", f"{conf:.2f}%")
-                        save_history(st.session_state.user_phone, module, label, conf)
-                    else: st.error("Model not found.")
+                # VALIDATION CHECK: Is it a grayscale medical image?
+                if not is_medical_scan(raw_img):
+                    st.error("❌ Non-Medical Image Detected. Please upload a valid grayscale MRI or CT scan.")
+                else:
+                    with st.spinner("Analyzing Imaging Data..."):
+                        if os.path.exists(current["path"]):
+                            model = load_selected_model(current["path"])
+                            pred = model.predict(proc_img)
+                            idx = np.argmax(pred)
+                            label = current["labels"][idx]
+                            conf = float(np.max(pred) * 100)
+
+                            if conf < 75.0:
+                                st.warning("⚠️ Low AI Confidence: The image does not clearly match medical patterns. Please provide a high-quality scan.")
+                            else:
+                                color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
+                                st.markdown(f"### Diagnosis Outcome:")
+                                st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
+                                st.metric("Clinical Confidence Level", f"{conf:.2f}%")
+                                save_history(st.session_state.user_phone, module, label, conf)
+                        else: st.error("Model not found.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 7. SECURE ADMIN ANALYTICS ---
@@ -193,12 +206,10 @@ if st.session_state.user_phone == ADMIN_PHONE:
             df_logs = pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn)
             conn.close()
             st.metric("Total Patients", len(df_users))
-            st.subheader("Global User Directory")
             st.dataframe(df_users, use_container_width=True)
-            st.subheader("System-Wide Clinical Logs")
+            st.subheader("Global System Logs")
             st.dataframe(df_logs, use_container_width=True)
-        except Exception as e:
-            st.error(f"Database Error: {e}")
+        except Exception as e: st.error(f"DB Error: {e}")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
