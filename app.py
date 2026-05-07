@@ -59,16 +59,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. UTILITIES & IMAGE VALIDATION ---
+# --- 4. UTILITIES & SMART IMAGE VALIDATION ---
 @st.cache_resource
 def load_selected_model(model_path):
     return tf.keras.models.load_model(model_path, compile=False)
 
-def is_medical_scan(img):
-    """Detects if the image is grayscale (medical) using saturation analysis."""
+def is_valid_medical_image(img, model_type):
+    """
+    Smarter validation:
+    - Brain/Lung scans must be low saturation (grayscale).
+    - Skin scans are expected to have higher saturation (color).
+    """
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     avg_saturation = np.mean(hsv[:, :, 1])
-    return avg_saturation < 40 
+    
+    if model_type in ["Brain", "Lung"]:
+        return avg_saturation < 40  # Grayscale check
+    elif model_type == "Skin":
+        return avg_saturation > 5   # Ensure it's not a black/white photo, allows color
+    return True
 
 def preprocess_image(uploaded_file, target_size, model_type):
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -89,7 +98,6 @@ if not st.session_state.logged_in:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: left; color: #3B82F6; font-size: 3rem;'>🏥 MEDIVISION PLUS</h1>", unsafe_allow_html=True)
         
-        # Color-coded Diagnostic Visual Grid
         st.markdown("""
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 25px;">
                 <div style="background-color: #1E293B; padding: 25px; border-radius: 12px; border-top: 5px solid #60A5FA; text-align: center;">
@@ -192,8 +200,9 @@ elif menu == "Diagnostic Hub":
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             if st.button("🚀 EXECUTE AI ANALYSIS"):
-                if not is_medical_scan(raw_img):
-                    st.error("❌ Invalid Image Source: Please provide a grayscale medical scan.")
+                # Updated validation call here
+                if not is_valid_medical_image(raw_img, current["type"]):
+                    st.error(f"❌ Invalid Image: The uploaded file does not match the expected visual characteristics for a {current['type']} scan.")
                 else:
                     with st.spinner("Processing Clinical Data..."):
                         if os.path.exists(current["path"]):
