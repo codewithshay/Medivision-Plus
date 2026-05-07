@@ -7,6 +7,7 @@ import requests
 import pandas as pd
 import sqlite3
 import re 
+from tensorflow.keras.utils import normalize
 from streamlit_lottie import st_lottie
 from database import create_db, add_user, login_user, save_history, get_history
 
@@ -28,7 +29,8 @@ def logout():
 
 def load_lottieurl(url):
     try:
-        r = requests.get(url, timeout=5)
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200: return None
         return r.json()
     except: return None
@@ -64,33 +66,43 @@ st.markdown("""
 def load_selected_model(model_path):
     return tf.keras.models.load_model(model_path, compile=False)
 
-def is_valid_medical_image(img, model_type):
+def is_valid_medical_image(img, scan_type):
     """
-    Smarter validation:
-    - Brain/Lung scans must be low saturation (grayscale).
-    - Skin scans are expected to have higher saturation (color).
+    Smarter Validation:
+    - Brain/Lung (MRI/CT): Must be grayscale (Low saturation)
+    - Skin (Dermoscopy): Must have color (Higher saturation)
     """
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     avg_saturation = np.mean(hsv[:, :, 1])
     
-    if model_type in ["Brain", "Lung"]:
-        return avg_saturation < 40  # Grayscale check
-    elif model_type == "Skin":
-        return avg_saturation > 5   # Ensure it's not a black/white photo, allows color
+    if scan_type in ["Brain", "Lung"]:
+        return avg_saturation < 40 # MRI/CT should be grayscale
+    elif scan_type == "Skin":
+        return avg_saturation > 5 # Skin scans must have color
     return True
 
 def preprocess_image(uploaded_file, target_size, model_type):
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img_resized = cv2.resize(img, (target_size, target_size))
-    if model_type == "Brain":
-        img_array = img_resized.astype('float32') / 255.0
-    else:
-        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(np.array(img_resized))
-    return img, np.expand_dims(img_array, axis=0)
+    try:
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        if img is None: return None, None
+        
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_resized = cv2.resize(img, (target_size, target_size))
+        
+        if model_type == "Brain":
+            # Matching your training: normalize(axis=1)
+            img_array = np.array(img_resized)
+            img_array = normalize(img_array, axis=1)
+        else:
+            # Using MobileNetV2 preprocessing for Lung/Skin
+            img_array = tf.keras.applications.mobilenet_v2.preprocess_input(np.array(img_resized))
+            
+        return img, np.expand_dims(img_array, axis=0)
+    except:
+        return None, None
 
-# --- 5. LOGIN / SIGNUP SCREEN (Visual-First UI) ---
+# --- 5. LOGIN / SIGNUP SCREEN ---
 if not st.session_state.logged_in:
     col_visual, col_auth = st.columns([1.3, 1], gap="large")
 
@@ -120,8 +132,7 @@ if not st.session_state.logged_in:
         """, unsafe_allow_html=True)
 
         lottie_med = load_lottieurl("https://lottie.host/8664188b-8772-4d2c-8097-40d164d1f56a/I9QG6E3KOn.json")
-        if lottie_med:
-            st_lottie(lottie_med, height=320, key="login_anim")
+        if lottie_med: st_lottie(lottie_med, height=320, key="login_anim")
 
     with col_auth:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
@@ -130,8 +141,8 @@ if not st.session_state.logged_in:
             tab1, tab2 = st.tabs(["🔒 LOGIN", "➕ REGISTER"])
             
             with tab1:
-                l_phone = st.text_input("User Identification", placeholder="Registered Phone Number", key="login_phone")
-                l_pass = st.text_input("Security Key", type="password", placeholder="Access Password", key="login_pass")
+                l_phone = st.text_input("User ID", placeholder="8638968521", key="login_phone")
+                l_pass = st.text_input("Security Key", type="password", key="login_pass")
                 if st.button("AUTHORIZE ACCESS", use_container_width=True):
                     user = login_user(l_phone, l_pass)
                     if user:
@@ -139,70 +150,70 @@ if not st.session_state.logged_in:
                         st.session_state.user_phone = str(user[0])
                         st.session_state.user_name = user[2]
                         st.rerun()
-                    else:
-                        st.error("Authentication Denied")
+                    else: st.error("Authentication Denied")
 
             with tab2:
-                r_name = st.text_input("Full Patient Name", placeholder="Alphabets only")
-                r_phone = st.text_input("Primary Phone", placeholder="10-digit number")
+                r_name = st.text_input("Full Patient Name")
+                r_phone = st.text_input("Mobile (10 digits)")
                 r_age = st.number_input("Age", 1, 120, 21)
-                r_pass = st.text_input("New Password", type="password")
+                r_pass = st.text_input("Password", type="password")
                 if st.button("INITIALIZE PROFILE", use_container_width=True):
-                    is_name_valid = bool(re.match(r"^[A-Za-z\s]+$", r_name))
-                    is_phone_valid = bool(re.match(r"^\d{10}$", r_phone))
-                    
-                    if not is_name_valid:
-                        st.error("Name requires alphabets only.")
-                    elif not is_phone_valid:
-                        st.error("Phone must be exactly 10 digits.")
-                    elif len(r_pass) < 4:
-                        st.error("Password too brief.")
-                    else:
-                        if add_user(r_phone, r_pass, r_name, r_age):
-                            st.success("Account Ready! Login now.")
+                    if bool(re.match(r"^[A-Za-z\s]+$", r_name)) and bool(re.match(r"^\d{10}$", r_phone)):
+                        if add_user(r_phone, r_pass, r_name, r_age): st.success("Account Ready!")
                         else: st.error("Profile already exists.")
+                    else: st.error("Check inputs (Name: Alphabets, Phone: 10 digits).")
     st.stop()
 
 # --- 6. MAIN APP INTERFACE ---
-st.sidebar.markdown(f"### 👤 Patient Profile: \n**{st.session_state.user_name}**")
-st.sidebar.markdown("---")
+st.sidebar.markdown(f"### 👤 Profile: \n**{st.session_state.user_name}**")
 menu = st.sidebar.radio("Navigation", ["Diagnostic Hub", "My History", "Logout"])
 
-if menu == "Logout":
-    logout()
+if menu == "Logout": logout()
 
 elif menu == "My History":
-    st.title("📋 Patient Diagnostic Records")
+    st.title("📋 Diagnostic Records")
     history_df = get_history(st.session_state.user_phone)
-    if not history_df.empty:
-        st.dataframe(history_df, use_container_width=True)
-    else:
-        st.info("No records found in clinical history.")
+    if not history_df.empty: st.dataframe(history_df, use_container_width=True)
+    else: st.info("No records found.")
 
 elif menu == "Diagnostic Hub":
     st.title("🩺 AI Diagnostic Module")
     config = {
-        "Brain Tumor (MRI)": {"size": 64, "type": "Brain", "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), "labels": ["Tumor Detected", "Normal"]},
-        "Skin Cancer (Dermoscopy)": {"size": 128, "type": "Skin", "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), "labels": ["Benign", "Malignant"]},
-        "Lung Tumor (CT Scan)": {"size": 224, "type": "Lung", "path": os.path.join(MODELS_DIR, "lung_model.keras"), "labels": ["Normal", "Tumor Detected"]}
+        "Brain Tumor (MRI)": {
+            "size": 64, 
+            "type": "Brain", 
+            "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), 
+            "labels": ["Normal", "Tumor Detected"] # Matches CATEGORIES = ['no_tumor', 'tumor']
+        },
+        "Skin Cancer (Dermoscopy)": {
+            "size": 128, 
+            "type": "Skin", 
+            "path": os.path.join(MODELS_DIR, "mobilenetv2_fast_highacc.keras"), 
+            "labels": ["Benign", "Malignant"]
+        },
+        "Lung Tumor (CT Scan)": {
+            "size": 224, 
+            "type": "Lung", 
+            "path": os.path.join(MODELS_DIR, "lung_model.keras"), 
+            "labels": ["Normal", "Tumor Detected"]
+        }
     }
     module = st.selectbox("Select Diagnostic Suite", list(config.keys()))
     current = config[module]
-    uploader = st.file_uploader(f"Upload {module} imaging", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader(f"Upload {module} scan", type=["jpg", "png", "jpeg"])
 
     if uploader:
         c1, c2 = st.columns(2)
+        raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
         with c1:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
-            raw_img, proc_img = preprocess_image(uploader, current["size"], current["type"])
             st.image(raw_img, caption="Diagnostic Input", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
         with c2:
             st.markdown('<div class="medical-card">', unsafe_allow_html=True)
             if st.button("🚀 EXECUTE AI ANALYSIS"):
-                # Updated validation call here
                 if not is_valid_medical_image(raw_img, current["type"]):
-                    st.error(f"❌ Invalid Image: The uploaded file does not match the expected visual characteristics for a {current['type']} scan.")
+                    st.error(f"❌ Invalid Image for {current['type']} scan.")
                 else:
                     with st.spinner("Processing Clinical Data..."):
                         if os.path.exists(current["path"]):
@@ -212,36 +223,23 @@ elif menu == "Diagnostic Hub":
                             label = current["labels"][idx]
                             conf = float(np.max(pred) * 100)
 
-                            if conf < 75.0:
-                                st.warning("⚠️ Uncertainty Alert: Imaging data does not meet precision threshold.")
+                            if conf < 75.0: st.warning("⚠️ Inconclusive Analysis.")
                             else:
                                 color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
-                                st.markdown(f"### Assessment Outcome:")
-                                st.markdown(f"<h2 style='color: {color};'>{label}</h2>", unsafe_allow_html=True)
-                                st.metric("Confidence Rating", f"{conf:.2f}%")
+                                st.markdown(f"### Assessment: <span style='color:{color};'>{label}</span>", unsafe_allow_html=True)
+                                st.metric("AI Confidence", f"{conf:.2f}%")
                                 save_history(st.session_state.user_phone, module, label, conf)
-                        else: st.error("Inference Engine missing.")
+                        else: st.error("Model Engine missing.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 7. SECURE ADMIN ANALYTICS ---
 ADMIN_PHONE = "8638968521"
-
 if st.session_state.user_phone == ADMIN_PHONE:
     st.sidebar.markdown("---")
     if st.sidebar.checkbox("🔓 Developer Analytics"):
-        st.divider()
-        st.header("📊 Admin Dashboard")
-        try:
-            conn = sqlite3.connect("patients.db")
-            df_users = pd.read_sql_query("SELECT name, phone, age FROM users", conn)
-            df_logs = pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn)
-            conn.close()
-            st.metric("Total Userbase", len(df_users))
-            st.subheader("Global Directory")
-            st.dataframe(df_users, use_container_width=True)
-            st.subheader("Global Clinical Activity")
-            st.dataframe(df_logs, use_container_width=True)
-        except Exception as e: st.error(f"Engine Error: {e}")
+        conn = sqlite3.connect("patients.db")
+        st.dataframe(pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn), use_container_width=True)
+        conn.close()
 
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
