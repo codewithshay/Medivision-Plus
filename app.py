@@ -141,7 +141,6 @@ if not st.session_state.logged_in:
             tab1, tab2 = st.tabs(["🔒 LOGIN", "➕ REGISTER"])
             
             with tab1:
-                # Removed admin phone number placeholder for production security
                 l_phone = st.text_input("User ID", placeholder="Enter Registered Phone Number", key="login_phone")
                 l_pass = st.text_input("Security Key", type="password", placeholder="Enter Password", key="login_pass")
                 if st.button("AUTHORIZE ACCESS", use_container_width=True):
@@ -184,7 +183,7 @@ elif menu == "Diagnostic Hub":
             "size": 64, 
             "type": "Brain", 
             "path": os.path.join(MODELS_DIR, "BrainTumor_New.h5"), 
-            "labels": ["Normal", "Tumor Detected"] # Matches CATEGORIES = ['no_tumor', 'tumor']
+            "labels": ["Normal", "Tumor Detected"]
         },
         "Skin Cancer (Dermoscopy)": {
             "size": 128, 
@@ -220,16 +219,49 @@ elif menu == "Diagnostic Hub":
                         if os.path.exists(current["path"]):
                             model = load_selected_model(current["path"])
                             pred = model.predict(proc_img)
-                            idx = np.argmax(pred)
-                            label = current["labels"][idx]
-                            conf = float(np.max(pred) * 100)
-
-                            if conf < 75.0: st.warning("⚠️ Inconclusive Analysis.")
+                            
+                            # --- SMART POST-PROCESSING ENGINE ---
+                            if current["type"] == "Brain":
+                                normal_prob = float(pred[0][0] * 100)
+                                tumor_prob = float(pred[0][1] * 100)
+                                if tumor_prob >= 20.0:
+                                    label = "Tumor Detected"
+                                    conf = tumor_prob
+                                else:
+                                    label = "Normal"
+                                    conf = normal_prob
+                                    
+                            elif current["type"] == "Lung":
+                                normal_prob = float(pred[0][0] * 100)
+                                lung_tumor_prob = float(pred[0][1] * 100)
+                                if lung_tumor_prob >= 30.0:
+                                    label = "Tumor Detected"
+                                    conf = lung_tumor_prob
+                                else:
+                                    label = "Normal"
+                                    conf = normal_prob
+                                    
+                            elif current["type"] == "Skin":
+                                benign_prob = float(pred[0][0] * 100)
+                                malignant_prob = float(pred[0][1] * 100)
+                                # Clinical Security: If malignancy score exceeds 30%, override argmax fallback
+                                if malignant_prob >= 30.0:
+                                    label = "Malignant"
+                                    conf = malignant_prob
+                                else:
+                                    label = "Benign"
+                                    conf = benign_prob
+                                    
                             else:
-                                color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
-                                st.markdown(f"### Assessment: <span style='color:{color};'>{label}</span>", unsafe_allow_html=True)
-                                st.metric("AI Confidence", f"{conf:.2f}%")
-                                save_history(st.session_state.user_phone, module, label, conf)
+                                idx = np.argmax(pred)
+                                label = current["labels"][idx]
+                                conf = float(np.max(pred) * 100)
+                            # -------------------------------------
+
+                            color = "#F87171" if "Tumor" in label or "Malignant" in label else "#34D399"
+                            st.markdown(f"### Assessment: <span style='color:{color};'>{label}</span>", unsafe_allow_html=True)
+                            st.metric("AI Confidence", f"{conf:.2f}%")
+                            save_history(st.session_state.user_phone, module, label, conf)
                         else: st.error("Model Engine missing.")
             st.markdown('</div>', unsafe_allow_html=True)
 
