@@ -141,8 +141,9 @@ if not st.session_state.logged_in:
             tab1, tab2 = st.tabs(["🔒 LOGIN", "➕ REGISTER"])
             
             with tab1:
-                l_phone = st.text_input("User ID", placeholder="8638968521", key="login_phone")
-                l_pass = st.text_input("Security Key", type="password", key="login_pass")
+                # Removed admin phone number placeholder for production security
+                l_phone = st.text_input("User ID", placeholder="Enter Registered Phone Number", key="login_phone")
+                l_pass = st.text_input("Security Key", type="password", placeholder="Enter Password", key="login_pass")
                 if st.button("AUTHORIZE ACCESS", use_container_width=True):
                     user = login_user(l_phone, l_pass)
                     if user:
@@ -153,8 +154,8 @@ if not st.session_state.logged_in:
                     else: st.error("Authentication Denied")
 
             with tab2:
-                r_name = st.text_input("Full Patient Name")
-                r_phone = st.text_input("Mobile (10 digits)")
+                r_name = st.text_input("Full Patient Name", placeholder="Alphabets only")
+                r_phone = st.text_input("Mobile (10 digits)", placeholder="10-digit number")
                 r_age = st.number_input("Age", 1, 120, 21)
                 r_pass = st.text_input("Password", type="password")
                 if st.button("INITIALIZE PROFILE", use_container_width=True):
