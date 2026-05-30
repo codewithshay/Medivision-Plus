@@ -220,7 +220,7 @@ elif menu == "Diagnostic Hub":
                             model = load_selected_model(current["path"])
                             pred = model.predict(proc_img)
                             
-                            # --- SMART SAFE POS-PROCESSING ENGINE ---
+                            # --- SMART SAFE POST-PROCESSING ENGINE ---
                             if current["type"] == "Brain":
                                 normal_prob = float(pred[0][0] * 100)
                                 tumor_prob = float(pred[0][1] * 100)
@@ -232,7 +232,6 @@ elif menu == "Diagnostic Hub":
                                     conf = normal_prob
                                     
                             elif current["type"] == "Lung":
-                                # Dynamic handling for 1-node vs 2-node output arrays
                                 if pred.shape[1] == 1:
                                     lung_tumor_prob = float(pred[0][0] * 100)
                                     normal_prob = 100.0 - lung_tumor_prob
@@ -240,7 +239,6 @@ elif menu == "Diagnostic Hub":
                                     normal_prob = float(pred[0][0] * 100)
                                     lung_tumor_prob = float(pred[0][1] * 100)
                                 
-                                # Apply the 30% safety trigger margin
                                 if lung_tumor_prob >= 30.0:
                                     label = "Tumor Detected"
                                     conf = lung_tumor_prob
@@ -281,9 +279,27 @@ ADMIN_PHONE = "8638968521"
 if st.session_state.user_phone == ADMIN_PHONE:
     st.sidebar.markdown("---")
     if st.sidebar.checkbox("🔓 Developer Analytics"):
-        conn = sqlite3.connect("patients.db")
-        st.dataframe(pd.read_sql_query("SELECT * FROM history ORDER BY date DESC", conn), use_container_width=True)
-        conn.close()
+        st.divider()
+        st.header("📊 Admin Dashboard")
+        try:
+            conn = sqlite3.connect("patients.db")
+            # Pull data with an INNER JOIN to show patient names without modifying the table design
+            query = """
+                SELECT users.name AS 'Patient Name', history.phone AS 'Phone Number', 
+                       history.module AS 'Suite Type', history.label AS 'Assessment Outcome', 
+                       history.confidence AS 'AI Confidence (%)', history.date AS 'Timestamp'
+                FROM history
+                INNER JOIN users ON history.phone = users.phone
+                ORDER BY history.date DESC
+            """
+            df_logs = pd.read_sql_query(query, conn)
+            conn.close()
+            
+            st.metric("Total Clinical Activity Logs", len(df_logs))
+            st.subheader("Global Clinical Audit Records")
+            st.dataframe(df_logs, use_container_width=True)
+        except Exception as e: 
+            st.error(f"Analytics Join Error: {e}")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("MEDIVISION PLUS v2.0 | ADTU 2026")
