@@ -220,7 +220,7 @@ elif menu == "Diagnostic Hub":
                             model = load_selected_model(current["path"])
                             pred = model.predict(proc_img)
                             
-                            # --- SMART POST-PROCESSING ENGINE ---
+                            # --- SMART SAFE POS-PROCESSING ENGINE ---
                             if current["type"] == "Brain":
                                 normal_prob = float(pred[0][0] * 100)
                                 tumor_prob = float(pred[0][1] * 100)
@@ -232,8 +232,15 @@ elif menu == "Diagnostic Hub":
                                     conf = normal_prob
                                     
                             elif current["type"] == "Lung":
-                                normal_prob = float(pred[0][0] * 100)
-                                lung_tumor_prob = float(pred[0][1] * 100)
+                                # Dynamic handling for 1-node vs 2-node output arrays
+                                if pred.shape[1] == 1:
+                                    lung_tumor_prob = float(pred[0][0] * 100)
+                                    normal_prob = 100.0 - lung_tumor_prob
+                                else:
+                                    normal_prob = float(pred[0][0] * 100)
+                                    lung_tumor_prob = float(pred[0][1] * 100)
+                                
+                                # Apply the 30% safety trigger margin
                                 if lung_tumor_prob >= 30.0:
                                     label = "Tumor Detected"
                                     conf = lung_tumor_prob
@@ -242,9 +249,13 @@ elif menu == "Diagnostic Hub":
                                     conf = normal_prob
                                     
                             elif current["type"] == "Skin":
-                                benign_prob = float(pred[0][0] * 100)
-                                malignant_prob = float(pred[0][1] * 100)
-                                # Clinical Security: If malignancy score exceeds 30%, override argmax fallback
+                                if pred.shape[1] == 1:
+                                    malignant_prob = float(pred[0][0] * 100)
+                                    benign_prob = 100.0 - malignant_prob
+                                else:
+                                    benign_prob = float(pred[0][0] * 100)
+                                    malignant_prob = float(pred[0][1] * 100)
+                                    
                                 if malignant_prob >= 30.0:
                                     label = "Malignant"
                                     conf = malignant_prob
