@@ -143,7 +143,7 @@ if not st.session_state.logged_in:
             with tab1:
                 l_phone = st.text_input("User ID", placeholder="Enter Registered Phone Number", key="login_phone")
                 l_pass = st.text_input("Security Key", type="password", placeholder="Enter Password", key="login_pass")
-                if st.button("AUTHORIZE ACCESS", use_container_width=True):
+                if st.button("LOGIN", use_container_width=True):
                     user = login_user(l_phone, l_pass)
                     if user:
                         st.session_state.logged_in = True
